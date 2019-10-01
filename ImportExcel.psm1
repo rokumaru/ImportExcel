@@ -480,7 +480,10 @@ function Import-Excel {
             #region Get rows and columns
             
             # If we are doing dataonly it is quicker to work out which rows to ignore before processing the cells.
-            $dataRow = $IncludeRow[(!$NoHeader)..($IncludeRow.Length - 1)]
+            
+            $i = if ($NoHeader) { 1 } else { 0 }
+            $dataRows = foreach ($row in $IncludeRow) { if($i++ -ne 0) { $row } }
+
             if ($DataOnly) {
 
                 # We're going to look at every cell and build 2 hash tables holding rows & columns which contain data.
@@ -490,16 +493,16 @@ function Import-Excel {
                 
                 $colHash = @{}
                 $rowHash = @{}
-                foreach ($row in $dataRow) {
+                foreach ($row in $dataRows) {
                     foreach ($col in $IncludeColumn) {
                         if ($null -ne $workSheet.GetValue($row, $col)) { $colHash[$col] = $rowHash[$row] = $true }
                     }
                 }
-                $rows = foreach ($row in $dataRow)  { if ($rowHash[$row]) { $row } }
+                $rows = foreach ($row in $dataRows)  { if ($rowHash[$row]) { $row } }
                 $columns = foreach ($col in $IncludeColumn)  { if ($colHash[$col]) { $col } }
             }
             else {
-                $rows = $dataRow
+                $rows = $dataRows
                 $columns = $IncludeColumn
             }
             #endregion
@@ -551,7 +554,7 @@ function Import-Excel {
                 return
             }
             if (!$rows) {
-                $PSCmdlet.WriteWarning("Worksheet '$WorksheetName' in workbook '$Path' contains no data in the rows after top row '$StartRow'")
+                $PSCmdlet.WriteWarning("Worksheet '$($workSheet.Name)' in workbook '$Path' contains no data in the rows after top row '$($IncludeRow[0])'")
                 return
             }
 

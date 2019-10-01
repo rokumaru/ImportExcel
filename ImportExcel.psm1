@@ -402,7 +402,7 @@ function Import-Excel {
         $Password
     )
 
-    begin {
+    Begin {
 
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -414,7 +414,7 @@ function Import-Excel {
         }
     }
 
-    process {
+    Process {
 
         if ($Path) {
             try {
@@ -475,7 +475,7 @@ function Import-Excel {
             $PSCmdlet.WriteDebug($sw.Elapsed.TotalMilliseconds)
 
             if (!$IncludeRow) { $IncludeRow = $(if ($StartRow) { $StartRow } else { 1 })..$(if ($EndRow) { $EndRow } else { $Worksheet.Dimension.End.Row }) }
-            if (!$IncludeColumn) { $IncludeColumn = $(if ($StartColumn) { $StartColumn } else { 1 })..$(if ($EndColumn) { $EndColumn } else { $Worksheet.Dimension.End.Column }) }
+            if (!$IncludeColumn) { $IncludeColumn = $(if ($StartColumn) { $StartColumn } else { 1 })..$(if ($EndColumn) { $EndColumn } else { $worksheet.Dimension.End.Column }) }
 
             #region Get rows and columns
             
@@ -571,7 +571,7 @@ function Import-Excel {
                 $i = 0
                 foreach ($col in $columns) {
                     $newRow.($propertyNames[$i]) = $workSheet.GetValue($row, $col)
-                    #$PSCmdlet.WriteVerbose("Import cell '$($Worksheet.Cells[$row, $col].Address)' with property name '$($propertyNames[$i])' and value '$($Worksheet.Cells[$row, $col].Value)'.")
+                    #$PSCmdlet.WriteVerbose("Import cell '$($worksheet.Cells[$row, $col].Address)' with property name '$($propertyNames[$i])' and value '$($worksheet.GetValue($row, $col))'.")
                     $i++
                 }
                 $newRow.psobject.Copy()

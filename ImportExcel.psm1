@@ -105,6 +105,9 @@ function Import-Excel {
    .PARAMETER DataOnly
        Import only rows and columns that contain data, empty rows and empty columns are not imported.
 
+   .PARAMETER HeaderOnly
+       Import only columns that contain header data, empty headers are not imported.
+
    .PARAMETER HeaderName
        Specifies custom property names to use, instead of the values defined in the column headers of the TopRow.
        If you provide fewer header names than there are columns of data in the worksheet, then data will only be imported from that number of columns - the others will be ignored.
@@ -127,11 +130,17 @@ function Import-Excel {
    .PARAMETER EndColumn
         By default the import reads up to the last populated column, -EndColumn tells the import to stop at an earlier number.
 
+   .PARAMETER IncludeRow
+       
+
+   .PARAMETER IncludeColumn
+       
+
    .PARAMETER Password
        Accepts a string that will be used to open a password protected Excel file.
 
    .EXAMPLE
-       Import data from an Excel worksheet. One object is created for each row. The property names of the objects consist of the column names defined in the first row. In case a column doesn’t have a column header (usually in row 1 when ‘-StartRow’ is not used), then the unnamed columns will be skipped and the data in those columns will not be imported.
+       Import data from an Excel worksheet. One object is created for each row. If the headers are duplicated or do not exist, the sequence number is automatically added.
 
        ----------------------------------------------
        | File: Movies.xlsx     -      Sheet: Actors |
@@ -145,12 +154,32 @@ function Import-Excel {
        PS C:\> Import-Excel -Path 'C:\Movies.xlsx' -WorkSheetname Actors
 
        First Name: Chuck
+       #1        : Norris
+       Address   : California
+
+       First Name: Jean-Claude
+       #1        : Vandamme
+       Address   : Brussels
+
+   .EXAMPLE
+       Ignore columns without headers.
+
+       ----------------------------------------------
+       | File: Movies.xlsx     -      Sheet: Actors |
+       ----------------------------------------------
+       |           A           B            C       |
+       |1     First Name                 Address    |
+       |2     Chuck         Norris       California |
+       |3     Jean-Claude   Vandamme     Brussels   |
+       ----------------------------------------------
+
+       PS C:\> Import-Excel -Path 'C:\Movies.xlsx' -WorkSheetname Actors -HeaderOnly
+
+       First Name: Chuck
        Address   : California
 
        First Name: Jean-Claude
        Address   : Brussels
-
-       Notice that column 'B' is not imported because there's no value in cell 'B1' that can be used as property name for the objects.
 
    .EXAMPLE
        Import the complete Excel worksheet ‘as is’ by using the ‘-NoHeader’ switch. One object is created for each row. The property names of the objects will be automatically generated (P1, P2, P3, ..).
@@ -177,8 +206,6 @@ function Import-Excel {
        P1: Jean-Claude
        P2: Vandamme
        P3: Brussels
-
-       Notice that the column header (row 1) is imported as an object too.
 
     .EXAMPLE
        Import data from an Excel worksheet. One object is created for each row. The property names of the objects consist of the names defined in the parameter ‘-HeaderName’. The properties are named starting from the most left column (A) to the right. In case no value is present in one of the columns, that property will have an empty value.
@@ -230,7 +257,7 @@ function Import-Excel {
        |4     Skyfall         2012           9                  |
        ----------------------------------------------------------
 
-       PS C:\> Import-Excel -Path 'C:\Movies.xlsx' -WorkSheetname Movies –NoHeader -DataOnly
+       PS C:\> Import-Excel -Path 'C:\Movies.xlsx' -WorkSheetname Movies –NoHeader -DataOnly -HeaderOnly
 
        P1: The Bodyguard
        P2: 1992
@@ -258,13 +285,30 @@ function Import-Excel {
        |3     Jean-Claude               Vandamme     Brussels   |
        ----------------------------------------------------------
 
-       PS C:\> Import-Excel -Path 'C:\Movies.xlsx' -WorkSheetname Actors -DataOnly -HeaderName 'FirstName', 'SecondName', 'City' –StartRow 2
+       PS C:\> Import-Excel -Path 'C:\Movies.xlsx' -WorkSheetname Actors -DataOnly -HeaderOnly -HeaderName 'FirstName','SecondName','City' –StartRow 2
 
        FirstName : Jean-Claude
        SecondName: Vandamme
        City      : Brussels
 
        Notice that only 1 object is imported with only 3 properties. Column B and row 2 are empty and have been disregarded by using the switch '-DataOnly'. The property names have been named with the values provided with the parameter '-HeaderName'. Row number 1 with ‘Chuck Norris’ has not been imported, because we started the import from row 2 with the parameter ‘-StartRow 2’.
+
+    .EXAMPLE
+
+       ----------------------------------------------------------
+       | File: Movies.xlsx            -           Sheet: Actors |
+       ----------------------------------------------------------
+       |           A           B           C            D       |
+       |1     Chuck                     Norris       California |
+       |2                                                       |
+       |3     Jean-Claude               Vandamme     Brussels   |
+       ----------------------------------------------------------
+
+       PS C:\> Import-Excel -Path 'C:\Movies.xlsx' -WorkSheetname Actors -Column 1,3,4 -Row 3 -NoHeader -HeaderName 'FirstName','SecondName','City'
+
+       FirstName : Jean-Claude
+       SecondName: Vandamme
+       City      : Brussels
 
     .EXAMPLE
         >
@@ -284,174 +328,265 @@ function Import-Excel {
 
     [CmdLetBinding()]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute("PSAvoidUsingPlainTextForPassword", "")]
+   
     Param (
-        [Alias('FullName')]
-        [Parameter(ParameterSetName = "PathA", Mandatory, ValueFromPipelineByPropertyName, ValueFromPipeline, Position = 0 )]
-        [Parameter(ParameterSetName = "PathB", Mandatory, ValueFromPipelineByPropertyName, ValueFromPipeline, Position = 0 )]
-        [Parameter(ParameterSetName = "PathC", Mandatory, ValueFromPipelineByPropertyName, ValueFromPipeline, Position = 0 )]
-        [String]$Path,
-        [Parameter(ParameterSetName = "PackageA", Mandatory)]
-        [Parameter(ParameterSetName = "PackageB", Mandatory)]
-        [Parameter(ParameterSetName = "PackageC", Mandatory)]
-        [OfficeOpenXml.ExcelPackage]$ExcelPackage,
-        [Alias('Sheet')]
+        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName, Position = 0, ParameterSetName = 'Path')]
+        [Parameter(Mandatory, ValueFromPipeline, ValueFromPipelineByPropertyName, Position = 0, ParameterSetName = 'Path-NoHeader')]
+        [ValidateNotNullOrEmpty()]
+        [Alias('PSPath')]
+        [String]
+        $Path,
+
+        [Parameter(Mandatory, ParameterSetName = 'Package')]
+        [Parameter(Mandatory, ParameterSetName = 'Package-NoHeader')]
+        [ValidateNotNull()]
+        [OfficeOpenXml.ExcelPackage]
+        $ExcelPackage,
+        
         [Parameter(Position = 1)]
         [ValidateNotNullOrEmpty()]
-        [String]$WorksheetName,
-        [Parameter(ParameterSetName = 'PathB'   , Mandatory)]
-        [Parameter(ParameterSetName = 'PackageB', Mandatory)]
-        [String[]]$HeaderName ,
-        [Parameter(ParameterSetName = 'PathC'   , Mandatory)]
-        [Parameter(ParameterSetName = 'PackageC', Mandatory)]
-        [Switch]$NoHeader     ,
-        [Alias('HeaderRow', 'TopRow')]
-        [ValidateRange(1, 9999)]
-        [Int]$StartRow = 1,
-        [Alias('StopRow', 'BottomRow')]
-        [Int]$EndRow ,
+        [Alias('Sheet')]
+        [String]
+        $WorksheetName,
+
+        [String[]]
+        $HeaderName,
+
+        [Parameter(Mandatory, ParameterSetName = 'Path-NoHeader')]
+        [Parameter(Mandatory, ParameterSetName = 'Package-NoHeader')]
+        [Switch]
+        $NoHeader,
+
+        [ValidateRange(1, 1048576)]
+        [Alias('TopRow')]
+        [Int]
+        $StartRow,
+        
+        [ValidateRange(1, 1048576)]
+        [Alias('BottomRow')]
+        [Int]
+        $EndRow,
+
+        [ValidateRange(1, 16384)]
         [Alias('LeftColumn')]
-        [Int]$StartColumn = 1,
+        [Int]
+        $StartColumn,
+        
+        [ValidateRange(1, 16384)]
         [Alias('RightColumn')]
-        [Int]$EndColumn  ,
-        [Switch]$DataOnly,
+        [Int]
+        $EndColumn,
+
+        [ValidateCount(1, 1048576)]
+        [ValidateRange(1, 1048576)]
+        [Alias('Row')]
+        [Int[]]
+        $IncludeRow,
+
+        [ValidateCount(1, 16384)]
+        [ValidateRange(1, 16384)]
+        [Alias('Column')]
+        [Int[]]
+        $IncludeColumn,
+
+        [Switch]
+        $DataOnly,
+
+        [Parameter(ParameterSetName = 'Path')]
+        [Parameter(ParameterSetName = 'Package')]
+        [Switch]
+        $HeaderOnly,
+
         [ValidateNotNullOrEmpty()]
-        [String]$Password
+        [String]
+        $Password
     )
+
     begin {
+
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
-        Function Get-PropertyNames {
-            <#
-            .SYNOPSIS
-                Create objects containing the column number and the column name for each of the different header types.
-            #>
-            [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = "Name would be incorrect, and command is not exported")]
-            Param (
-                [Parameter(Mandatory)]
-                [Int[]]$Columns,
-                [Parameter(Mandatory)]
-                [Int]$StartRow
-            )
-
-            Try {
-                if ($NoHeader) {
-                    $i = 0
-                    foreach ($C in $Columns) {
-                        $i++
-                        $C | Select-Object @{N = 'Column'; E = { $_ } }, @{N = 'Value'; E = { 'P' + $i } }
-                    }
-                }
-                elseif ($HeaderName) {
-                    $i = 0
-                    foreach ($H in $HeaderName) {
-                        $H | Select-Object @{N = 'Column'; E = { $Columns[$i] } }, @{N = 'Value'; E = { $H } }
-                        $i++
-                    }
-                }
-                else {
-                    if ($StartRow -lt 1) {
-                        throw 'The top row can never be less than 1 when we need to retrieve headers from the worksheet.' ; return
-                    }
-
-                    foreach ($C in $Columns) {
-                        $Worksheet.Cells[$StartRow, $C] | Where-Object { $_.Value } | Select-Object @{N = 'Column'; E = { $C } }, Value
-                    }
-                }
-            }
-            Catch {
-                throw "Failed creating property names: $_" ; return
-            }
+        if ($StartRow -or $EndRow -and $IncludeRow) {
+            $PSCmdlet.WriteWarning("'-StartRow' and '-EndRow' will be ignored because the '-IncludeRow' parameter is specified")
+        }
+        if ($StartColumn -or $EndColumn -and $IncludeColumn) {
+            $PSCmdlet.WriteWarning("'-StartColumn' and '-EndColumn' will be ignored because the '-IncludeColumn' parameter is specified.")
         }
     }
 
     process {
-        if ($path) {
-            $extension = [System.IO.Path]::GetExtension($Path)
-            if ($extension -notmatch '.xlsx$|.xlsm$') {
-                throw "Import-Excel does not support reading this extension type $($extension)"
+
+        if ($Path) {
+            try {
+                $file = $PSCmdlet.InvokeProvider.Item.Get($path, $false, $true)
+            }
+            catch {
+                # path not found
+                $e = [exception]::new("'${Path}' file not found.", $_.Exception)
+                $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new($e, 'PathNotFound', 'ObjectNotFound', $Path))
+                return
             }
 
-            $resolvedPath = (Resolve-Path $Path -ErrorAction SilentlyContinue)
-            if ($resolvedPath) {
-                $Path = $resolvedPath.ProviderPath
-            }
-            else {
-                throw "'$($Path)' file not found"
+            # check item type
+            if ($file.PSIsContainer) {
+                $e = [exception]::new("'${Path}' A directory cannot be specified for the '-Path' parameter.")
+                $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new($e, 'InvalidItemType', 'ObjectNotFound', $Path))
+                return
             }
 
-            $stream = New-Object -TypeName System.IO.FileStream -ArgumentList $Path, 'Open', 'Read', 'ReadWrite'
-            $ExcelPackage = New-Object -TypeName OfficeOpenXml.ExcelPackage
-            if   ($Password) { $ExcelPackage.Load($stream,$Password)}
-            else             { $ExcelPackage.Load($stream) }
+            # check file type
+            if ($file.Extension -notin '.xlsx','.xlsm') {
+                $e = [exception]::new("Import-Excel does not support reading this extension type $($file.Extension)")
+                $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new($e, 'InvalidFileType', 'NotSpecified', $Path))
+                return
+            }
+
+            try {
+                $stream = $file.Open('Open', 'Read', 'ReadWrite')
+            }
+            catch {
+                $e = [exception]::new("The process cannot access the file '$($file.FullName)' because it is being used by another process.", $_.Exception)
+                $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new($e, 'IOException', 'NotSpecified', $Path))
+                return
+            }
+            
+            try {
+                $ExcelPackage = if ($Password) { [OfficeOpenXml.ExcelPackage]::new($stream, $Password) } else { [OfficeOpenXml.ExcelPackage]::new($stream) }
+            }
+            catch {
+                $e = [exception]::new("Failed loading Excel package '$Path'. The file is corrupted or the password is incorrect.", $_.Exception)
+                $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new($e, 'Exception', 'NotSpecified', $Path))
+                return
+            }
         }
+
         try {
-            #Select worksheet
-            if (-not  $WorksheetName) { $Worksheet = $ExcelPackage.Workbook.Worksheets[1] }
-            elseif (-not ($Worksheet = $ExcelPackage.Workbook.Worksheets[$WorkSheetName])) {
-                throw "Worksheet '$WorksheetName' not found, the workbook only contains the worksheets '$($ExcelPackage.Workbook.Worksheets)'. If you only wish to select the first worksheet, please remove the '-WorksheetName' parameter." ; return
-            }
 
-            Write-Debug $sw.Elapsed.TotalMilliseconds
+            # select worksheet
+            $workSheet = $ExcelPackage.Workbook.Worksheets[$(if ($WorkSheetName) { $WorkSheetName } else { 1 })]
+
+            # check for existence of worksheet
+            if (!$workSheet) {
+                $e = [exception]::new("Worksheet '$WorksheetName' not found, the workbook only contains the worksheets '$($ExcelPackage.Workbook.Worksheets)'. If you only wish to select the first worksheet, please remove the '-WorksheetName' parameter.")
+                $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new($e, "InvalidWorksheetName", "NotSpecified", $WorksheetName))
+                return
+            }
+ 
+            $PSCmdlet.WriteDebug($sw.Elapsed.TotalMilliseconds)
+
+            if (!$IncludeRow) { $IncludeRow = $(if ($StartRow) { $StartRow } else { 1 })..$(if ($EndRow) { $EndRow } else { $Worksheet.Dimension.End.Row }) }
+            if (!$IncludeColumn) { $IncludeColumn = $(if ($StartColumn) { $StartColumn } else { 1 })..$(if ($EndColumn) { $EndColumn } else { $Worksheet.Dimension.End.Column }) }
+
             #region Get rows and columns
-            #If we are doing dataonly it is quicker to work out which rows to ignore before processing the cells.
-            if (-not $EndRow   ) { $EndRow = $Worksheet.Dimension.End.Row }
-            if (-not $EndColumn) { $EndColumn = $Worksheet.Dimension.End.Column }
-            $endAddress = [OfficeOpenXml.ExcelAddress]::TranslateFromR1C1("R[$EndRow]C[$EndColumn]", 0, 0)
+            
+            # If we are doing dataonly it is quicker to work out which rows to ignore before processing the cells.
+            $dataRow = $IncludeRow[(!$NoHeader)..($IncludeRow.Length - 1)]
             if ($DataOnly) {
-                #If we are using headers startrow will be the header-row so examine data from startRow + 1,
-                if ($NoHeader) { $range = "A" + ($StartRow     ) + ":" + $endAddress }
-                else { $range = "A" + ($StartRow + 1 ) + ":" + $endAddress }
-                #We're going to look at every cell and build 2 hash tables holding rows & columns which contain data.
-                #Want to Avoid 'select unique' operations & large Sorts, becuse time time taken increases with square
-                #of number of items (PS uses heapsort at large size). Instead keep a list of what we have seen,
-                #using Hash tables: "we've seen it" is all we need, no need to worry about "seen it before" / "Seen it many times".
-                $colHash = @{ }
-                $rowHash = @{ }
-                foreach ($cell in $Worksheet.Cells[$range]) {
-                    if ($null -ne $cell.Value ) { $colHash[$cell.Start.Column] = 1; $rowHash[$cell.Start.row] = 1 }
-                }
-                $rows = (   $StartRow..$EndRow   ).Where( { $rowHash[$_] })
-                $columns = ($StartColumn..$EndColumn).Where( { $colHash[$_] })
-            }
-            else {
-                $Columns = $StartColumn .. $EndColumn  ; if ($StartColumn -gt $EndColumn) { Write-Warning -Message "Selecting columns $StartColumn to $EndColumn might give odd results." }
-                if ($NoHeader) { $Rows = $StartRow..$EndRow ; if ($StartRow -gt $EndRow) { Write-Warning -Message "Selecting rows $StartRow to $EndRow might give odd results." } }
-                else { $Rows = (1 + $StartRow)..$EndRow } # ; if ($StartRow -ge $EndRow) { Write-Warning -Message "Selecting $StartRow as the header with data in $(1+$StartRow) to $EndRow might give odd results." } }
-            }
-            #endregion
-            #region Create property names
-            if ((-not $Columns) -or (-not ($PropertyNames = Get-PropertyNames -Columns $Columns -StartRow $StartRow))) {
-                throw "No column headers found on top row '$StartRow'. If column headers in the worksheet are not a requirement then please use the '-NoHeader' or '-HeaderName' parameter."; return
-            }
-            if ($Duplicates = $PropertyNames | Group-Object Value | Where-Object Count -GE 2) {
-                throw "Duplicate column headers found on row '$StartRow' in columns '$($Duplicates.Group.Column)'. Column headers must be unique, if this is not a requirement please use the '-NoHeader' or '-HeaderName' parameter."; return
-            }
-            #endregion
-            Write-Debug $sw.Elapsed.TotalMilliseconds
-            if (-not $Rows) {
-                Write-Warning "Worksheet '$WorksheetName' in workbook '$Path' contains no data in the rows after top row '$StartRow'"
-            }
-            else {
-                #region Create one object per row
-                foreach ($R in $Rows) {
-                    #Disabled write-verbose for speed
-                    #  Write-Verbose "Import row '$R'"
-                    $NewRow = [Ordered]@{ }
 
-                    foreach ($P in $PropertyNames) {
-                        $NewRow[$P.Value] = $Worksheet.Cells[$R, $P.Column].Value
-                        #    Write-Verbose "Import cell '$($Worksheet.Cells[$R, $P.Column].Address)' with property name '$($p.Value)' and value '$($Worksheet.Cells[$R, $P.Column].Value)'."
+                # We're going to look at every cell and build 2 hash tables holding rows & columns which contain data.
+                # Want to Avoid 'select unique' operations & large Sorts, becuse time time taken increases with square
+                # of number of items (PS uses heapsort at large size). Instead keep a list of what we have seen,
+                # using Hash tables: "we've seen it" is all we need, no need to worry about "seen it before" / "Seen it many times".
+                
+                $colHash = @{}
+                $rowHash = @{}
+                foreach ($row in $dataRow) {
+                    foreach ($col in $IncludeColumn) {
+                        if ($null -ne $workSheet.GetValue($row, $col)) { $colHash[$col] = $rowHash[$row] = $true }
                     }
-
-                    [PSCustomObject]$NewRow
                 }
-                #endregion
+                $rows = foreach ($row in $dataRow)  { if ($rowHash[$row]) { $row } }
+                $columns = foreach ($col in $IncludeColumn)  { if ($colHash[$col]) { $col } }
             }
-            Write-Debug $sw.Elapsed.TotalMilliseconds
+            else {
+                $rows = $dataRow
+                $columns = $IncludeColumn
+            }
+            #endregion
+
+
+            #region Create property names
+
+            [array]$propertyNames =
+                if ($NoHeader -and !$HeaderName) {
+                    foreach ($i in 1..$columns.Length) { "P$i" }
+                }
+                else {
+                    if ($HeaderOnly -and $HeaderName) {
+                        $columns = foreach ($col in $columns) { if($workSheet.GetValue($IncludeRow[0], $col)) { $col } }
+                    }
+                    elseif ($HeaderOnly) {
+                        $headerList = [System.Collections.Generic.List[string]]::new()
+                        $columns = foreach ($col in $columns) {
+                            if($header = $workSheet.GetValue($IncludeRow[0], $col)) {
+                                $headerList.Add($header)
+                                $col
+                            }
+                        }
+                        $HeaderName = $headerList
+                    }
+                    elseif (!$HeaderName) {
+                        $HeaderName = foreach ($col in $columns) { $workSheet.GetValue($IncludeRow[0], $col) }
+                    }
+                    
+                    if ($HeaderName.Length -lt $columns.Length) { $HeaderName += @("") * ($columns.Length - $HeaderName.Length) }
+
+                    # check duplicates
+                    $h = @{ "" = 1 }
+                    foreach($header in $HeaderName) { $h["$header"]++ }
+                    foreach($header in $HeaderName) {
+                        if ($h["$header"] -ge 2) {
+                            $i = 1
+                            while ($h.Contains(($newHeader = $header + "#$i"))) { $i++ }
+                            $h[$newHeader]++
+                            $newHeader
+                        }
+                        else { $header }
+                    }
+                }
+            #endregion
+            
+            if (!$columns) {
+                $PSCmdlet.WriteWarning("No valid columns found.")
+                return
+            }
+            if (!$rows) {
+                $PSCmdlet.WriteWarning("Worksheet '$WorksheetName' in workbook '$Path' contains no data in the rows after top row '$StartRow'")
+                return
+            }
+
+            $PSCmdlet.WriteDebug($sw.Elapsed.TotalMilliseconds)
+
+            #region Create one object per row
+
+            $newRow = Select-Object -InputObject 0 -Property $propertyNames
+            
+            foreach ($row in $rows) {
+                # Disabled write-verbose for speed
+                #$PSCmdlet.WriteVerbose("Import row '$row'")
+
+                $i = 0
+                foreach ($col in $columns) {
+                    $newRow.($propertyNames[$i]) = $workSheet.GetValue($row, $col)
+                    #$PSCmdlet.WriteVerbose("Import cell '$($Worksheet.Cells[$row, $col].Address)' with property name '$($propertyNames[$i])' and value '$($Worksheet.Cells[$row, $col].Value)'.")
+                    $i++
+                }
+                $newRow.psobject.Copy()
+            }
+            #endregion
+
+            $PSCmdlet.WriteDebug($sw.Elapsed.TotalMilliseconds)
         }
-        catch { throw "Failed importing the Excel workbook '$Path' with worksheet '$Worksheetname': $_"; return }
+        catch {
+            $e = [exception]::new("Failed importing the Excel workbook '$Path' with worksheet '$($workSheet.Name)':`r`n ($($_.Exception.Message)[$(($_.ScriptStackTrace -split "`r`n")[0])])", $_.Exception)
+            $PSCmdlet.WriteError([System.Management.Automation.ErrorRecord]::new($e, 'Unknown', 'NotSpecified', $WorksheetName))
+            return
+        }
         finally {
-            if ($Path) { $stream.close(); $ExcelPackage.Dispose() }
+            if ($Path) {
+                $stream.Close()
+                $ExcelPackage.Dispose()
+            }
         }
     }
 }
